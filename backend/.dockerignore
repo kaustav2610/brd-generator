@@ -1,0 +1,7 @@
+source_repos/
+output/*
+workspaces/
+.env
+__pycache__/
+*.pyc
+tests/
