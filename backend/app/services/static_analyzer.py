@@ -57,10 +57,17 @@ ENDPOINT_PATTERNS = [
 ]
 
 FUNCTION_PATTERNS = [
-    re.compile(r'^\s*(?:async\s+)?def\s+([A-Za-z_]\w*)\s*\(', re.M),
-    re.compile(r'^\s*(?:export\s+)?(?:async\s+)?function\s+([A-Za-z_$]\w*)\s*\(', re.M),
-    re.compile(r'^\s*(?:public|private|protected|static|\s)+\s*[A-Za-z_<>\[\], ?]+\s+([A-Za-z_]\w*)\s*\(', re.M),
-    re.compile(r'^\s*func\s+(?:\([^)]*\)\s*)?([A-Za-z_]\w*)\s*\(', re.M),
+    (re.compile(r'^\s*(?:async\s+)?def\s+([A-Za-z_]\w*)\s*\(', re.M), {"Python"}),
+    (re.compile(r'^\s*(?:export\s+)?(?:async\s+)?function\s+([A-Za-z_$]\w*)\s*\(', re.M), {"JavaScript", "TypeScript", "PHP"}),
+    (
+        re.compile(
+            r'^[ \t]*(?:(?:public|private|protected|static)\s+){1,4}'
+            r'[A-Za-z_][\w<>\[\],? ]{0,80}?\s+([A-Za-z_]\w*)\s*\(',
+            re.M,
+        ),
+        {"Java", "C#", "PHP"},
+    ),
+    (re.compile(r'^\s*func\s+(?:\([^)]*\)\s*)?([A-Za-z_]\w*)\s*\(', re.M), {"Go"}),
 ]
 
 CLASS_PATTERN = re.compile(r'^\s*(?:class|interface|struct)\s+([A-Za-z_]\w*)', re.M)
@@ -154,8 +161,9 @@ class StaticAnalyzer:
 
     def _analyze_file(self, path, language, source):
         functions = []
-        for pattern in FUNCTION_PATTERNS:
-            functions.extend(pattern.findall(source))
+        for pattern, applicable_languages in FUNCTION_PATTERNS:
+            if language in applicable_languages:
+                functions.extend(pattern.findall(source))
         classes = CLASS_PATTERN.findall(source)
 
         endpoints = []
