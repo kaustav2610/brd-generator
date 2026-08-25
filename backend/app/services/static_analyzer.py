@@ -3,6 +3,7 @@ import json
 import re
 from pathlib import Path
 from typing import Iterable
+import os
 
 
 LANGUAGES = {
@@ -75,16 +76,38 @@ class StaticAnalyzer:
         self.max_files = max_files
         self.max_file_bytes = max_file_bytes
         self.max_chunks = max_chunks
+    @staticmethod
+    def _iter_candidate_files(root: Path):
+        """
+        Walk the repo yielding candidate files, sorted for deterministic
+        output — but critically, this PRUNES ignored directories (vendor,
+        node_modules, fonts, etc.) during the walk itself, so we never
+        descend into or enumerate their contents at all.
+
+        The previous implementation used `sorted(root.rglob("*"))`, which
+        fully enumerates and sorts every file in the ENTIRE repo tree
+        (including ignored folders) before filtering anything out. On
+        repos bundling large vendor/asset trees (common in template-based
+        PHP/JS projects — e.g. an icon-font library alone can ship
+        thousands of tiny files) this made analysis pathologically slow
+        even when the repo's total download size was small, since file
+        *count*, not byte size, drives the cost.
+        """
+        for dirpath, dirnames, filenames in os.walk(root):
+            # Prune ignored directories in-place so os.walk never
+            # descends into them — this is the actual fix.
+            dirnames[:] = sorted(d for d in dirnames if d not in IGNORE_DIRS)
+            for filename in sorted(filenames):
+                yield Path(dirpath) / filename
+
 
     def analyze(self, root: Path) -> dict:
         files = []
         chunks = []
         secret_hits = []
 
-        for path in sorted(root.rglob("*")):
+        for path in self._iter_candidate_files(root):
             if not path.is_file():
-                continue
-            if any(part in IGNORE_DIRS for part in path.parts):
                 continue
             language = LANGUAGES.get(path.suffix.lower())
             if not language:
