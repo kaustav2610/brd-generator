@@ -78,24 +78,11 @@ class StaticAnalyzer:
         self.max_chunks = max_chunks
     @staticmethod
     def _iter_candidate_files(root: Path):
-        """
-        Walk the repo yielding candidate files, sorted for deterministic
-        output — but critically, this PRUNES ignored directories (vendor,
-        node_modules, fonts, etc.) during the walk itself, so we never
-        descend into or enumerate their contents at all.
-
-        The previous implementation used `sorted(root.rglob("*"))`, which
-        fully enumerates and sorts every file in the ENTIRE repo tree
-        (including ignored folders) before filtering anything out. On
-        repos bundling large vendor/asset trees (common in template-based
-        PHP/JS projects — e.g. an icon-font library alone can ship
-        thousands of tiny files) this made analysis pathologically slow
-        even when the repo's total download size was small, since file
-        *count*, not byte size, drives the cost.
-        """
+        dir_count = 0
         for dirpath, dirnames, filenames in os.walk(root):
-            # Prune ignored directories in-place so os.walk never
-            # descends into them — this is the actual fix.
+            dir_count += 1
+            if filenames:
+                print(f"[static-analyzer] entering dir #{dir_count}: {dirpath} ({len(filenames)} files, {len(dirnames)} subdirs)")
             dirnames[:] = sorted(d for d in dirnames if d not in IGNORE_DIRS)
             for filename in sorted(filenames):
                 yield Path(dirpath) / filename
@@ -116,16 +103,22 @@ class StaticAnalyzer:
                 break
 
             try:
+                print(f"[static-analyzer] stat: {path}")
                 size = path.stat().st_size
                 if size > self.max_file_bytes:
                     continue
+                print(f"[static-analyzer] reading ({size} bytes): {path}")
                 source = path.read_text(encoding="utf-8", errors="ignore")
-            except OSError:
+                print(f"[static-analyzer] read OK: {path}")
+            except OSError as exc:
+                print(f"[static-analyzer] OSError on {path}: {exc}")
                 continue
 
             rel = path.relative_to(root).as_posix()
+            print(f"[static-analyzer] analyzing content: {rel} ({len(source)} chars)")
             info = self._analyze_file(rel, language, source)
             files.append(info)
+            print(f"[static-analyzer] done ({len(files)}/{self.max_files}): {rel}")
 
             if any(pattern.search(source) for pattern in SECRET_PATTERNS):
                 secret_hits.append(rel)
